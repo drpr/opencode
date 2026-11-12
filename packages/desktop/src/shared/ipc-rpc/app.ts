@@ -9,11 +9,8 @@ export const AppAwaitInitialization = Rpc.make("AppAwaitInitialization", { succe
 
 export const AppReconnectService = Rpc.make("AppReconnectService", { success: ServerReadyData })
 
-// The renderer listens for DeepLinksOpened before it reports ready, and acknowledges each delivery once handled.
-export const AppReadyDeepLinks = Rpc.make("AppReadyDeepLinks")
-
-export const AppAcknowledgeDeepLinks = Rpc.make("AppAcknowledgeDeepLinks", {
-  payload: { attempt: Schema.Number },
+export const AppConsumeInitialDeepLinks = Rpc.make("AppConsumeInitialDeepLinks", {
+  success: Schema.Array(Schema.String),
 })
 
 export const AppIsFirstLaunchOnboardingPending = Rpc.make("AppIsFirstLaunchOnboardingPending", {
@@ -69,11 +66,37 @@ export const AppSetNativeTranslations = Rpc.make("AppSetNativeTranslations", {
 
 export const AppRelaunch = Rpc.make("AppRelaunch")
 
+const ShareAccount = Schema.Struct({
+  relayUrl: Schema.String,
+  username: Schema.String,
+  password: Schema.String,
+})
+
+const ShareStatus = Schema.Struct({
+  enabled: Schema.Boolean,
+  state: Schema.Literals(["disabled", "connecting", "online", "error"]),
+  environmentId: Schema.optional(Schema.String),
+  environmentName: Schema.optional(Schema.String),
+  error: Schema.optional(Schema.String),
+})
+
+export const ShareGetStatus = Rpc.make("ShareGetStatus", { success: ShareStatus })
+
+export const ShareGetAccount = Rpc.make("ShareGetAccount", { success: Schema.NullOr(ShareAccount) })
+
+export const ShareSaveAccount = Rpc.make("ShareSaveAccount", {
+  payload: { account: ShareAccount },
+  success: ShareStatus,
+})
+
+export const ShareEnable = Rpc.make("ShareEnable", { success: ShareStatus })
+
+export const ShareDisable = Rpc.make("ShareDisable", { success: ShareStatus })
+
 export const AppRpcs = RpcGroup.make(
   AppAwaitInitialization,
   AppReconnectService,
-  AppReadyDeepLinks,
-  AppAcknowledgeDeepLinks,
+  AppConsumeInitialDeepLinks,
   AppIsFirstLaunchOnboardingPending,
   AppFinishFirstLaunchOnboarding,
   AppCheckAppExists,
@@ -86,4 +109,9 @@ export const AppRpcs = RpcGroup.make(
   AppRecordFatalRendererError,
   AppSetNativeTranslations,
   AppRelaunch,
+  ShareGetStatus,
+  ShareGetAccount,
+  ShareSaveAccount,
+  ShareEnable,
+  ShareDisable,
 )

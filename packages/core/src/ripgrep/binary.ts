@@ -91,7 +91,8 @@ export namespace RipgrepBinary {
         // Windows zips go through the bsdtar in System32 (Windows 10 1803+), not PowerShell, which policy can block.
         // Git's GNU tar can come first on PATH and cannot read zip, so the system copy is called by path. bsdtar
         // decodes its arguments in the ANSI code page, so it runs inside the temp dir and only sees the ASCII
-        // archive name: a profile path such as C:\Users\用户 would otherwise reach it as C:\Users\??.
+        // archive name: a profile path with non-ASCII characters, such as a Chinese Windows username, would
+        // otherwise reach it as unreadable question marks.
         const result = yield* config.extension === "zip"
           ? run(
               path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe"),

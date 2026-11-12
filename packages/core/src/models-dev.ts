@@ -4,7 +4,6 @@ import { ConfigProvider } from "@opencode/schema/config/provider"
 import { MaxTokensField, MediaInput } from "@opencode/schema/model-compatibility"
 import { ModelsDev } from "@opencode/schema/models-dev"
 import { Money } from "@opencode/schema/money"
-import { FreeformFormat } from "@opencode/schema/tool"
 import { App } from "./app.js"
 import { Hash } from "@opencode/util/hash"
 import { FSUtil } from "@opencode/util/fs-util"
@@ -17,6 +16,7 @@ import { Provider } from "./provider.js"
 import { Variant } from "./variant.js"
 import { KV } from "./kv.js"
 import snapshotText from "./models-dev/snapshot.txt" with { type: "text" }
+import localCatalogText from "./models-dev/local.txt" with { type: "text" }
 import { isV1, toV2 } from "./models-dev/v1.js"
 
 // Only the fields opencode reads are decoded. Unknown keys are ignored, and a model that
@@ -70,12 +70,6 @@ type SourceCost = typeof SourceCost.Type
 // entry this version doesn't understand is skipped instead of failing the model.
 const SourceApi = Schema.Struct({
   base_url: Schema.optional(Schema.String),
-  capabilities: Schema.optional(
-    Schema.Struct({
-      // Format names this version doesn't know are skipped when the route is built.
-      tools: Schema.optional(Schema.Struct({ freeform: Schema.optional(Schema.Array(Schema.String)) })),
-    }),
-  ),
   sdk: Schema.optional(
     Schema.Struct({ aisdk: Schema.optional(Schema.String), opencodeai: Schema.optional(Schema.String) }),
   ),
@@ -143,7 +137,6 @@ const decodeProvider = Schema.decodeUnknownOption(SourceProvider)
 const decodeContext = Schema.decodeUnknownOption(ContextCondition)
 const decodeMaxTokensField = Schema.decodeUnknownOption(MaxTokensField)
 const decodeMediaInput = Schema.decodeUnknownOption(MediaInput)
-const knownFreeformFormat = Schema.is(FreeformFormat)
 const decodeStatus = Schema.decodeUnknownOption(Schema.Literals(["alpha", "beta", "deprecated"]))
 
 export type Snapshot = {
@@ -154,7 +147,6 @@ export type Snapshot = {
 
 type Route = {
   readonly package: string
-  readonly freeform?: Model.Capabilities["freeform"]
   readonly baseURL?: string
   readonly compatibility?: Model.Compatibility
 }
@@ -178,6 +170,9 @@ const BUILDS_OWN_URL = new Set([
   "aisdk:@jerome-benoit/sap-ai-provider-v2",
   "aisdk:watsonx-ai-provider",
 ])
+
+const CatalogJson = Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown))
+const decodeCatalog = (text: string) => Schema.decodeUnknownEffect(CatalogJson)(text)
 
 const normalize = Effect.fnUntraced(function* (catalog: Record<string, unknown>) {
   const failed: { readonly model: string; readonly issue: unknown }[] = []
@@ -281,7 +276,6 @@ function route(providerID: Provider.ID, model: SourceModel, unknown: Set<string>
   }
   return {
     package: packageName,
-    freeform: api.capabilities?.tools?.freeform?.filter(knownFreeformFormat),
     // An empty base_url is how models.dev says it has no URL for the API.
     ...(BUILDS_OWN_URL.has(packageName) || !api.base_url ? {} : { baseURL: api.base_url }),
     ...(Object.keys(compatibility).length > 0 ? { compatibility } : {}),
@@ -451,7 +445,6 @@ function modelInfo(
     settings: Object.keys(settings).length === 0 ? undefined : settings,
     capabilities: {
       tools: model.capabilities.tools.supported,
-      ...(source.route.freeform && { freeform: source.route.freeform }),
       input: modalities(model.modalities.input),
       output: modalities(model.modalities.output),
       temperature: model.capabilities.temperature,
@@ -488,8 +481,6 @@ export type Options = typeof Options.Type
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/ModelsDev") {}
 
-const CatalogJson = Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown))
-const decodeCatalog = (text: string) => Schema.decodeUnknownEffect(CatalogJson)(text)
 const Cache = Schema.Struct({
   updatedAt: Schema.Number,
   // Digest of the raw body, persisted so refresh() can skip republishing a
@@ -508,6 +499,23 @@ const defaultSource = "https://models.opencode.ai"
 export const catalogPath = `/experimental/v2.0/api.json?type=${TYPES.join(",")}`
 
 export const decodeSnapshot = (text: string) => decodeCatalog(text).pipe(Effect.flatMap(normalize))
+
+/**
+ * The providers opencode ships itself, so no catalog source has to name them. They are merged over
+ * whatever the source holds, which keeps them present across the periodic refresh.
+ */
+let localCache: readonly Snapshot[] | undefined
+export const localSnapshot = Effect.suspend(() => {
+  if (localCache) return Effect.succeed(localCache)
+  return decodeCatalog(localCatalogText).pipe(
+    Effect.flatMap(normalize),
+    Effect.map((snapshots) => {
+      localCache = snapshots
+      return snapshots
+    }),
+    Effect.orElseSucceed(() => [] as readonly Snapshot[]),
+  )
+})
 
 // Bundled snapshot of the catalog at `catalogPath`, committed at
 // packages/core/src/models-dev/snapshot.txt and refreshed via
@@ -544,7 +552,7 @@ export const layer = (options?: Options) =>
     Effect.gen(function* () {
       const fs = yield* FSUtil.Service
       const bus = yield* Bus.Service
-      const app = yield* App.Service
+      const app = yield* App.Metadata
       const kv = yield* KV.Service
       const http = (yield* HttpClient.HttpClient).pipe(
         HttpClient.retryTransient({

@@ -46,7 +46,7 @@ const patterns = [
   /context[_ ]length[_ ]exceeded/i,
   /context length is only \d+ tokens/i,
   /input length.*exceeds.*context length/i,
-  // Z.ai code 1261 arrives as `Prompt too long`, `Prompt exceeds max length` or `Prompt 超长`.
+  // Z.ai code 1261 arrives as `Prompt too long`, `Prompt exceeds max length`, or the Chinese `Prompt 超长`.
   /prompt (?:too long|exceeds max length|超长)/i,
   /too large for model with \d+ maximum context length/i,
   /prompt has [\d,]+ tokens?, but the configured context size is [\d,]+ tokens?/i,
@@ -131,12 +131,6 @@ const CONTENT_POLICY_CODES = new Set([
   "refusal",
   "datainspectionfailed",
   "moderation_blocked",
-  // Gemini Decisions rejects blocked input with these `error.code` strings on a 400.
-  "safety",
-  "prohibited_content",
-  "blocklist",
-  "image_safety",
-  "content_blocked",
 ])
 // OpenCode Zen replaces upstream codes outside its allow-list but keeps the original
 // as a `[code]` label at the start of the rewritten message.
@@ -148,7 +142,7 @@ const RATE_LIMIT_TEXT = /rate increased too quickly|rate[-_\s]?limit|too[_\s]?ma
 // Z.ai reports balance, plan expiry, plan limits, and plan model access on 429.
 // Cerebras reports its per-minute token throttle as `token_quota_exceeded`; that is a rate limit.
 const QUOTA_TEXT =
-  /insufficient[-_\s]?(?:quota|balance)|(?<!token_)quota[-_\s]?exceeded|budget exceeded|usage limit|(?<!rate[-_\s]?)limit exhausted|package has expired|plan does not yet include/i
+  /insufficient[-_\s]?(?:quota|balance)|(?<!token_)quota[-_\s]?exceeded|budget exceeded|usage limit|limit exhausted|package has expired|plan does not yet include/i
 // Policy rejections without a dedicated code, matched against the provider's own
 // explanation only. OpenAI reuses `invalid_prompt` for usage-policy rejections while
 // Bedrock Mantle reuses it for schema validation; Anthropic reports blocked output
